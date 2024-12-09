@@ -37,15 +37,27 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
     try {
       const response = await fetch('/api/createCharge', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, recipientAddress }),
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ 
+          amount: Number(amount), 
+          recipientAddress 
+        }),
       });
       
-      if (!response.ok) throw new Error('Failed to create charge');
-      const { id } = await response.json();
-      return id;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create charge');
+      }
+  
+      const data = await response.json();
+      
+      // Return the charge ID from the nested data object
+      return data.data.id;
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error creating charge:', error);
       throw error;
     }
   };
@@ -119,10 +131,7 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
 
               <div className="grid gap-4">
                 {fixedAmounts.map(({ amount, emoji, label }) => (
-                  <div 
-                    key={amount} 
-                    className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4"
-                  >
+                  <div key={amount} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
                     <div className="flex justify-between items-center mb-3">
                       <div className="flex items-center gap-3">
                         <div className="text-2xl">{emoji}</div>
@@ -132,7 +141,7 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
                         {amount} USDC
                       </div>
                     </div>
-                    <Checkout 
+                    <Checkout
                       chargeHandler={createChargeHandler(amount.toString())}
                       onStatus={handleStatus}
                     >
