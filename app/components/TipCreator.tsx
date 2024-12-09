@@ -26,7 +26,7 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
   };
 
   // Handle payment status changes
-  const handleStatus = (status: any) => {
+  const handleStatus = (status: { statusName: string }) => {
     if (status.statusName === 'success') {
       setCustomAmount(''); // Clear custom amount after successful payment
     }
@@ -81,7 +81,7 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
       <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl p-6">
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium mb-2">Creator's Address</label>
+            <label className="block text-sm font-medium mb-2">Creator&apos;s Address</label>
             <input
               type="text"
               value={recipientAddress}
