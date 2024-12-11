@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { isAddress } from 'viem';
 import { toast } from 'react-hot-toast';
 import { base } from 'wagmi/chains';
+import type { LifecycleStatus } from '@coinbase/onchainkit/checkout';
 
 interface TipCreatorProps {
   hideTitle?: boolean;
@@ -24,24 +25,24 @@ function CreatorInfo({ address }: { address: `0x${string}` }) {
 }
 
 // Utility functions for name resolution
-const resolveEnsName = async (name: string) => {
+const resolveEnsName = async (name: string): Promise<string | null> => {
   try {
     const response = await fetch(`https://api.ensideas.com/ens/resolve/${name}`);
     const data = await response.json();
     console.log('ENS Resolution:', data);
-    return data?.address;
+    return data?.address || null;
   } catch (error) {
     console.error('ENS resolution error:', error);
     return null;
   }
 };
 
-const resolveBaseName = async (name: string) => {
+const resolveBaseName = async (name: string): Promise<string | null> => {
   try {
     const response = await fetch(`https://api.web3.bio/profile/${name}`);
     const data = await response.json();
     console.log('Base Resolution:', data);
-    return data?.address;
+    return data?.address || null;
   } catch (error) {
     console.error('Base resolution error:', error);
     return null;
@@ -101,7 +102,7 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
     }
   };
 
-  const handleStatus = (status: { statusName: string; statusData?: any }) => {
+  const handleStatus = (status: LifecycleStatus) => {
     if (status.statusName === 'success') {
       setCustomAmount('');
       toast.custom((t) => (
