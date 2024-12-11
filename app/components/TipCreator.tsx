@@ -1,38 +1,139 @@
 'use client';
 
 import { Checkout, CheckoutButton, CheckoutStatus } from '@coinbase/onchainkit/checkout';
+import { IdentityCard } from '@coinbase/onchainkit/identity';
 import { useAccount } from 'wagmi';
 import { useState } from 'react';
 import { isAddress } from 'viem';
+import { toast } from 'react-hot-toast';
+import { base } from 'wagmi/chains';
 
-// Props interface for the TipCreator component
 interface TipCreatorProps {
-  hideTitle?: boolean; // Optional prop to hide the main title
+  hideTitle?: boolean;
 }
 
+function CreatorInfo({ address }: { address: `0x${string}` }) {
+  return (
+    <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4">
+      <IdentityCard 
+        address={address}
+        chain={base}
+      />
+    </div>
+  );
+}
+
+// Utility functions for name resolution
+const resolveEnsName = async (name: string) => {
+  try {
+    const response = await fetch(`https://api.ensideas.com/ens/resolve/${name}`);
+    const data = await response.json();
+    console.log('ENS Resolution:', data);
+    return data?.address;
+  } catch (error) {
+    console.error('ENS resolution error:', error);
+    return null;
+  }
+};
+
+const resolveBaseName = async (name: string) => {
+  try {
+    const response = await fetch(`https://api.web3.bio/profile/${name}`);
+    const data = await response.json();
+    console.log('Base Resolution:', data);
+    return data?.address;
+  } catch (error) {
+    console.error('Base resolution error:', error);
+    return null;
+  }
+};
+
 export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
-  // Get wallet connection status from wagmi
   const { isConnected } = useAccount();
-  
-  // State management for form inputs and validation
+  const [originalInput, setOriginalInput] = useState('');
   const [recipientAddress, setRecipientAddress] = useState('');
   const [customAmount, setCustomAmount] = useState('');
   const [isValidAddress, setIsValidAddress] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
 
-  // Validate Ethereum address format when input changes
-  const handleAddressChange = (address: string) => {
-    setRecipientAddress(address);
-    setIsValidAddress(isAddress(address));
-  };
+  const handleAddressChange = async (input: string) => {
+    console.log('Input changed:', input);
+    setOriginalInput(input);
+    setIsValidAddress(false);
+    setRecipientAddress('');
+    setIsResolving(true);
+    
+    try {
+      if (!input) {
+        return;
+      }
 
-  // Handle payment status changes
-  const handleStatus = (status: { statusName: string }) => {
-    if (status.statusName === 'success') {
-      setCustomAmount(''); // Clear custom amount after successful payment
+      // Check if it's already a valid Ethereum address
+      if (isAddress(input)) {
+        setRecipientAddress(input as `0x${string}`);
+        setIsValidAddress(true);
+        return;
+      }
+
+      // Handle .base.eth names
+      if (input.endsWith('.base.eth')) {
+        const address = await resolveBaseName(input);
+        if (address && isAddress(address)) {
+          setRecipientAddress(address as `0x${string}`);
+          setIsValidAddress(true);
+          return;
+        }
+      }
+
+      // Handle .eth names
+      if (input.endsWith('.eth')) {
+        const address = await resolveEnsName(input);
+        if (address && isAddress(address)) {
+          setRecipientAddress(address as `0x${string}`);
+          setIsValidAddress(true);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Resolution error:', error);
+    } finally {
+      setIsResolving(false);
     }
   };
 
-  // Create a Coinbase Commerce charge for the payment
+  const handleStatus = (status: { statusName: string; statusData?: any }) => {
+    if (status.statusName === 'success') {
+      setCustomAmount('');
+      toast.custom((t) => (
+        <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} 
+          max-w-md w-full bg-white dark:bg-gray-800 shadow-lg rounded-lg pointer-events-auto 
+          flex flex-col items-center p-6`}>
+          <div className="text-4xl mb-4">🎉</div>
+          <div className="text-xl font-medium mb-2 dark:text-white">Payment Successful!</div>
+          <div className="text-gray-600 dark:text-gray-400 text-center">
+            Thank you for supporting {originalInput || 'the creator'}
+          </div>
+          <a
+            href={`https://basescan.org/address/${recipientAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 text-purple-600 hover:text-purple-700 dark:text-purple-400 text-sm flex items-center gap-1"
+          >
+            View on Basescan
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
+            </svg>
+          </a>
+        </div>
+      ), {
+        duration: 5000,
+        position: 'top-center',
+      });
+    } else if (status.statusName === 'error') {
+      toast.error('Payment failed. Please try again.');
+    }
+  };
+
   const createChargeHandler = (amount: string) => async () => {
     try {
       const response = await fetch('/api/createCharge', {
@@ -43,7 +144,8 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
         },
         body: JSON.stringify({ 
           amount: Number(amount), 
-          recipientAddress 
+          recipientAddress,
+          recipientName: originalInput 
         }),
       });
       
@@ -53,16 +155,14 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
       }
   
       const data = await response.json();
-      
-      // Return the charge ID from the nested data object
       return data.data.id;
     } catch (error) {
       console.error('Error creating charge:', error);
+      toast.error('Failed to create payment. Please try again.');
       throw error;
     }
   };
 
-  // Show connect wallet message if wallet is not connected
   if (!isConnected) {
     return (
       <div className="text-center p-8 rounded-3xl bg-white dark:bg-gray-900 shadow-xl">
@@ -72,7 +172,6 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
     );
   }
 
-  // Predefined tip amounts with emojis and labels
   const fixedAmounts = [
     { amount: 5, emoji: '☕️', label: 'Coffee' },
     { amount: 10, emoji: '🍕', label: 'Pizza' },
@@ -93,42 +192,30 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
       <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl p-6">
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium mb-2">Creator&apos;s Address</label>
-            <input
-              type="text"
-              value={recipientAddress}
-              onChange={(e) => handleAddressChange(e.target.value)}
-              placeholder="0x..."
-              className="w-full p-3 border border-gray-200 dark:border-gray-800 rounded-xl bg-gray-50 dark:bg-gray-800/50 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-            />
+            <label className="block text-sm font-medium mb-2">
+              Creator&apos;s Address or Name
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={originalInput}
+                onChange={(e) => handleAddressChange(e.target.value)}
+                placeholder="0x... or name.eth or name.base.eth"
+                className="w-full p-3 border border-gray-200 dark:border-gray-800 rounded-xl 
+                  bg-gray-50 dark:bg-gray-800/50 focus:ring-2 focus:ring-purple-500 
+                  focus:border-transparent transition-all"
+              />
+              {isResolving && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <div className="animate-spin h-5 w-5 border-2 border-purple-500 rounded-full border-t-transparent"></div>
+                </div>
+              )}
+            </div>
           </div>
 
-          {isValidAddress && (
+          {isValidAddress && recipientAddress && (
             <>
-              <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4">
-                <div className="flex flex-col gap-2">
-                  <div className="text-sm font-medium text-purple-600 dark:text-purple-400">
-                    Verified Creator Address
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm">
-                      {recipientAddress.slice(0, 8)}...{recipientAddress.slice(-6)}
-                    </div>
-                    <a
-                      href={`https://basescan.org/address/${recipientAddress}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400"
-                    >
-                      View on Basescan
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
-                      </svg>
-                    </a>
-                  </div>
-                </div>
-              </div>
-
+              <CreatorInfo address={recipientAddress as `0x${string}`} />
               <div className="grid gap-4">
                 {fixedAmounts.map(({ amount, emoji, label }) => (
                   <div key={amount} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
