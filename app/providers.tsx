@@ -2,21 +2,33 @@
 
 import { base } from 'wagmi/chains';
 import { OnchainKitProvider } from '@coinbase/onchainkit';
-import type { ReactNode } from 'react';
-import { useState, useEffect } from 'react';
+import { type ReactNode, useState, useEffect } from 'react';
+import { createConfig, WagmiProvider } from 'wagmi';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { http } from 'viem';
+import { coinbaseWallet } from 'wagmi/connectors';
 
-/**
- * Providers Component
- * Configures the OnchainKit provider with:
- * - Base network support
- * - Automatic dark/light mode detection
- * - Wallet connection capabilities
- * 
- * Required Environment Variables:
- * - NEXT_PUBLIC_ONCHAINKIT_API_KEY: API key for OnchainKit services
- */
-export function Providers(props: { children: ReactNode }) {
-  const [apiKey, setApiKey] = useState<string>('');
+const queryClient = new QueryClient();
+
+// Configure Base network
+const baseMainnetRpc = 'https://mainnet.base.org';
+
+const config = createConfig({
+  chains: [base],
+  connectors: [
+    coinbaseWallet({
+      appName: process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || 'Creator Tip',
+      chainId: base.id,
+      jsonRpcUrl: baseMainnetRpc,
+    })
+  ],
+  transports: {
+    [base.id]: http(baseMainnetRpc)
+  }
+});
+
+export default function Providers({ children }: { children: ReactNode }) {
+  const [apiKey, setApiKey] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/config')
@@ -26,25 +38,27 @@ export function Providers(props: { children: ReactNode }) {
           setApiKey(data.apiKey);
         }
       })
-      .catch(error => console.error('Failed to fetch API key:', error));
+      .catch(console.error);
   }, []);
 
-  if (!apiKey) {
-    return null; // or a loading state
-  }
+  if (!apiKey) return null;
 
   return (
-    <OnchainKitProvider
-      apiKey={apiKey}
-      chain={base}
-      config={{ 
-        appearance: { 
-          mode: 'auto',
-        }
-      }}
-    >
-      {props.children}
-    </OnchainKitProvider>
+    <WagmiProvider config={config}>
+      <QueryClientProvider client={queryClient}>
+        <OnchainKitProvider
+          chain={base}
+          apiKey={apiKey}
+          config={{
+            appearance: {
+              mode: 'auto',
+              name: process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME
+            }
+          }}
+        >
+          {children}
+        </OnchainKitProvider>
+      </QueryClientProvider>
+    </WagmiProvider>
   );
 }
-

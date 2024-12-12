@@ -29,7 +29,6 @@ const resolveEnsName = async (name: string): Promise<string | null> => {
   try {
     const response = await fetch(`https://api.ensideas.com/ens/resolve/${name}`);
     const data = await response.json();
-    console.log('ENS Resolution:', data);
     return data?.address || null;
   } catch (error) {
     console.error('ENS resolution error:', error);
@@ -41,7 +40,6 @@ const resolveBaseName = async (name: string): Promise<string | null> => {
   try {
     const response = await fetch(`https://api.web3.bio/profile/${name}`);
     const data = await response.json();
-    console.log('Base Resolution:', data);
     return data?.address || null;
   } catch (error) {
     console.error('Base resolution error:', error);
@@ -58,25 +56,20 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
   const [isResolving, setIsResolving] = useState(false);
 
   const handleAddressChange = async (input: string) => {
-    console.log('Input changed:', input);
     setOriginalInput(input);
     setIsValidAddress(false);
     setRecipientAddress('');
     setIsResolving(true);
     
     try {
-      if (!input) {
-        return;
-      }
+      if (!input) return;
 
-      // Check if it's already a valid Ethereum address
       if (isAddress(input)) {
         setRecipientAddress(input as `0x${string}`);
         setIsValidAddress(true);
         return;
       }
 
-      // Handle .base.eth names
       if (input.endsWith('.base.eth')) {
         const address = await resolveBaseName(input);
         if (address && isAddress(address)) {
@@ -86,7 +79,6 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
         }
       }
 
-      // Handle .eth names
       if (input.endsWith('.eth')) {
         const address = await resolveEnsName(input);
         if (address && isAddress(address)) {
@@ -137,28 +129,39 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
 
   const createChargeHandler = (amount: string) => async () => {
     try {
-      const response = await fetch('/api/createCharge', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ 
-          amount: Number(amount), 
-          recipientAddress,
-          recipientName: originalInput 
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create charge');
+      const numAmount = parseFloat(amount);
+      if (isNaN(numAmount) || numAmount <= 0) {
+        throw new Error('Invalid amount');
       }
   
-      const data = await response.json();
-      return data.data.id;
+      console.log('Creating charge with params:', {
+        amount,
+        recipientAddress
+      });
+  
+      const response = await fetch('/api/createCharge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount,
+          recipientAddress,
+        }),
+      });
+  
+      if (!response.ok) {
+        throw new Error('Failed to create charge');
+      }
+  
+      const { data } = await response.json();
+      console.log('Charge created successfully:', data);
+      
+      // Return only the charge ID as per documentation
+      return data.id;
+  
     } catch (error) {
-      console.error('Error creating charge:', error);
+      console.error('Detailed error creating charge:', error);
       toast.error('Failed to create payment. Please try again.');
       throw error;
     }
@@ -221,7 +224,7 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
                 {fixedAmounts.map(({ amount, emoji, label }) => (
                   <div key={amount} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
                     <div className="flex justify-between items-center mb-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <div className="text-2xl">{emoji}</div>
                         <div className="font-medium">{label}</div>
                       </div>
@@ -234,7 +237,7 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
                       onStatus={handleStatus}
                     >
                       <CheckoutButton
-                        text={`Buy ${label} for ${amount} USDC`}
+                        text={`Send ${amount} USDC`}
                         coinbaseBranded
                         className="w-full !bg-purple-600 hover:!bg-purple-700"
                       />
@@ -243,25 +246,33 @@ export default function TipCreator({ hideTitle = false }: TipCreatorProps) {
                   </div>
                 ))}
                 
+                {/* Custom Amount Input */}
                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
                   <div className="flex justify-between items-center mb-3">
-                    <div className="font-medium">Custom Amount</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-2xl">💝</div>
+                      <div className="font-medium">Custom Amount</div>
+                    </div>
                     <input
                       type="number"
                       value={customAmount}
                       onChange={(e) => setCustomAmount(e.target.value)}
-                      placeholder="0"
+                      placeholder="Enter USDC amount"
                       min="0"
-                      className="w-32 p-2 text-right border border-gray-200 dark:border-gray-800 rounded-lg bg-white/50 dark:bg-black/20 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                      step="0.01"
+                      className="w-32 p-2 text-right border border-gray-200 dark:border-gray-800 rounded-lg 
+                        bg-white dark:bg-gray-900 focus:ring-2 focus:ring-purple-500 
+                        focus:border-transparent transition-all text-purple-600 dark:text-purple-400 
+                        font-bold text-lg"
                     />
                   </div>
                   {customAmount && Number(customAmount) > 0 && (
-                    <Checkout 
+                    <Checkout
                       chargeHandler={createChargeHandler(customAmount)}
                       onStatus={handleStatus}
                     >
-                      <CheckoutButton 
-                        text={`Support with ${customAmount} USDC`}
+                      <CheckoutButton
+                        text={`Send ${customAmount} USDC`}
                         coinbaseBranded
                         className="w-full !bg-purple-600 hover:!bg-purple-700"
                       />
